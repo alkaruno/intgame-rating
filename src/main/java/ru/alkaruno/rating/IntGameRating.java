@@ -1,10 +1,16 @@
 package ru.alkaruno.rating;
 
 import lombok.SneakyThrows;
+import org.dhatim.fastexcel.Workbook;
+import org.dhatim.fastexcel.Worksheet;
 import org.dhatim.fastexcel.reader.ReadableWorkbook;
 import org.dhatim.fastexcel.reader.Row;
+import ru.alkaruno.rating.data.Result;
+import ru.alkaruno.rating.data.Team;
 
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -13,6 +19,9 @@ import java.util.regex.Pattern;
 
 public class IntGameRating {
 
+    public static final int GAMES_COUNT = 8;
+    public static final int BEST_GAMES_COUNT = 5;
+
     private static final Pattern pattern = Pattern.compile("tournament-\\d+-table\\.xlsx");
 
     @SneakyThrows
@@ -20,11 +29,12 @@ public class IntGameRating {
 
         var data = new HashMap<String, Team>();
 
+        int gameIndex = 0;
         for (String filename : getFilenames()) {
             ReadableWorkbook wb = new ReadableWorkbook(new FileInputStream(filename));
             var sheet = wb.getFirstSheet();
             for (Row row : sheet.read()) {
-                var name = row.getCellText(1).trim();
+                var name = row.getCellText(1).trim().replace("\"", "");
                 if ("Название".equals(name)) {
                     continue;
                 }
@@ -36,43 +46,69 @@ public class IntGameRating {
                 } else {
                     points = getPoints(Integer.parseInt(place));
                 }
-                data.computeIfAbsent(name, s -> new Team(name, row.getCellText(2).trim())).getAllGames().add(new BigDecimal(points));
+                var result = new Result(Integer.parseInt(row.getCellText(12)), new BigDecimal(points));
+                data.computeIfAbsent(name, s -> new Team(name, row.getCellText(2).trim())).getResults().set(gameIndex, result);
             }
+            gameIndex++;
         }
 
         for (Map.Entry<String, Team> entry : data.entrySet()) {
             var team = entry.getValue();
-            team.setBestGames(new ArrayList<>(team.getAllGames()));
+            var list = new ArrayList<>(team.getResults().stream().map(result -> result != null ? result.getPoints() : BigDecimal.ZERO).toList());
+            team.setBestGames(list);
             team.getBestGames().sort(Collections.reverseOrder());
-            team.setBestGames(team.getAllGames().subList(0, Math.min(5, team.getBestGames().size())));
+            team.setBestGames(team.getBestGames().subList(0, BEST_GAMES_COUNT));
             team.setSum(team.getBestGames().stream().reduce(BigDecimal.ZERO, BigDecimal::add));
+        }
+
+        if (data.isEmpty()) {
+            return;
         }
 
         var list = new ArrayList<>(data.values());
         list.sort((o1, o2) -> Double.compare(o2.getSum().doubleValue(), o1.getSum().doubleValue()));
 
-        if (!list.isEmpty()) {
+        int size = list.size();
+        int start = 0;
+        BigDecimal blockPoints = list.getFirst().getSum();
 
-            int size = list.size();
-            int start = 0;
-            BigDecimal blockPoints = list.getFirst().getSum();
-
-            for (int index = 1; index <= size; index++) {
-                var sum = index < size ? list.get(index).getSum() : BigDecimal.valueOf(-1);
-                if (!sum.equals(blockPoints)) {
-                    if (index - start == 1) {
-                        list.get(start).setPlace("%d".formatted(start + 1));
-                    } else {
-                        var place = "%d-%d".formatted(start + 1, index);
-                        for (int j = start; j < index; j++) {
-                            list.get(j).setPlace(place);
-                        }
+        for (int index = 1; index <= size; index++) {
+            var sum = index < size ? list.get(index).getSum() : BigDecimal.valueOf(-1);
+            if (!sum.equals(blockPoints)) {
+                if (index - start == 1) {
+                    list.get(start).setPlace("%d".formatted(start + 1));
+                } else {
+                    var place = "%d-%d".formatted(start + 1, index);
+                    for (int j = start; j < index; j++) {
+                        list.get(j).setPlace(place);
                     }
-                    start = index;
-                    blockPoints = sum;
                 }
+                start = index;
+                blockPoints = sum;
             }
         }
+
+        // write to Excel
+
+        try (OutputStream os = new FileOutputStream("rating.xlsx"); Workbook wb = new Workbook(os, "IntGame Rating", "1.0")) {
+            Worksheet ws = wb.newWorksheet("Лист 1");
+            int index = 0;
+            for (Team team : list) {
+                ws.value(index, 0, team.getPlace());
+                ws.value(index, 1, team.getName());
+                ws.value(index, 2, team.getSum());
+                for (int game = 0; game < GAMES_COUNT; game++) {
+                    var result = team.getResults().get(game);
+                    ws.value(index, 2 + game * 2, result != null ? String.valueOf(result.getCorrectAnswers()) : "");
+                    ws.value(index, 2 + game * 2 + 1, result != null ? String.valueOf(result.getPoints()) : "");
+                }
+                ws.value(index, 2 + 16, "");
+                ws.value(index, 2 + 17, team.getSum());
+                index++;
+            }
+        }
+
+        // write to console
 
         var asciiTable = new AsciiTable();
 
