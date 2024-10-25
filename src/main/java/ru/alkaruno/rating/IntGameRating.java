@@ -96,14 +96,14 @@ public class IntGameRating {
             for (Team team : list) {
                 ws.value(index, 0, team.getPlace());
                 ws.value(index, 1, team.getName());
-                ws.value(index, 2, team.getSum());
+                ws.value(index, 2, team.getCity());
                 for (int game = 0; game < GAMES_COUNT; game++) {
                     var result = team.getResults().get(game);
-                    ws.value(index, 2 + game * 2, result != null ? String.valueOf(result.getCorrectAnswers()) : "");
-                    ws.value(index, 2 + game * 2 + 1, result != null ? String.valueOf(result.getPoints()) : "");
+                    ws.value(index, 3 + game * 2, result != null ? String.valueOf(result.getCorrectAnswers()) : "");
+                    ws.value(index, 3 + game * 2 + 1, result != null ? String.valueOf(result.getPoints()) : "");
                 }
-                ws.value(index, 2 + 16, "");
-                ws.value(index, 2 + 17, team.getSum());
+                ws.value(index, 3 + 16, "");
+                ws.value(index, 3 + 17, team.getSum());
                 index++;
             }
         }
