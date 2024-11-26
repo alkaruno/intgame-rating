@@ -2,6 +2,7 @@ package ru.alkaruno.rating;
 
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
+import org.dhatim.fastexcel.Color;
 import org.dhatim.fastexcel.Workbook;
 import org.dhatim.fastexcel.Worksheet;
 import org.dhatim.fastexcel.reader.ReadableWorkbook;
@@ -113,6 +114,9 @@ public class IntGameRating {
 
             int index = 1;
             for (Team team : list) {
+                if (isTopPlace(team.getPlace())) {
+                    ws.range(index, 0, index, 2).style().fillColor(Color.YELLOW).set();
+                }
                 ws.value(index, 0, team.getPlace());
                 ws.value(index, 1, team.getName());
                 ws.value(index, 2, team.getCity());
@@ -176,7 +180,7 @@ public class IntGameRating {
             var value = index < size ? points.get(index) : BigDecimal.valueOf(-1);
             if (!value.equals(blockValue)) {
                 if (index - start == 1) {
-                    result.add("%d".formatted(start + 1));
+                    result.add("%d".formatted(index));
                 } else {
                     var place = "%d-%d".formatted(start + 1, index);
                     for (int j = start; j < index; j++) {
@@ -189,6 +193,13 @@ public class IntGameRating {
         }
 
         return result;
+    }
+
+    private boolean isTopPlace(String place) {
+        if (place.contains("-")) {
+            return Integer.parseInt(place.split("-")[0]) <= 15;
+        }
+        return Integer.parseInt(place) <= 15;
     }
 
     private static List<String> getHeader() {
