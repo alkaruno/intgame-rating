@@ -1,9 +1,9 @@
 package ru.alkaruno.rating;
 
 import org.apache.commons.lang3.StringUtils;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
@@ -29,7 +29,13 @@ class IntGameRatingTest {
     public void testGetPlaces(String pointsStr, String placesStr) {
         var points = Arrays.stream(StringUtils.split(pointsStr, " ")).map(BigDecimal::new).toList();
         var places = List.of(StringUtils.split(placesStr, " "));
-        Assertions.assertEquals(places, rating.getPlaces(points));
+        assertEquals(places, rating.getPlaces(points));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Нижний Новгород", "г Нижний Новгород", "г. Нижний Новгород"})
+    public void testCityPattern(String value) {
+        assertEquals("Нижний Новгород", rating.getCity(value));
     }
 
 }

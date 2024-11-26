@@ -24,6 +24,10 @@ public class IntGameRating {
     public static final int BEST_GAMES_COUNT = 5;
 
     private static final Pattern pattern = Pattern.compile("tournament-\\d+-table\\.xlsx");
+    static final Pattern cityPattern =
+        Pattern.compile("(г\\.? )?(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    private static final List<String> ignoredTeams = List.of("Тестовая команда1");
 
     @SneakyThrows
     public void run() {
@@ -38,10 +42,10 @@ public class IntGameRating {
             var sheet = wb.getFirstSheet();
             for (Row row : sheet.read()) {
                 var name = row.getCellText(1).trim().replace("\"", "");
-                var city = row.getCellText(2).trim();
-                if ("Название".equals(name)) {
+                if ("Название".equals(name) || ignoredTeams.contains(name)) {
                     continue;
                 }
+                var city = getCity(row.getCellText(2).trim());
                 var fullName = "%s (%s)".formatted(name, city).toLowerCase();
                 if (teamNames.contains(fullName)) {
                     System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, row.getCellText(12));
@@ -67,7 +71,7 @@ public class IntGameRating {
                 }
                 gameResult.setPlace(place).setPoints(new BigDecimal(points));
 
-                var fullName = "%s (%s)".formatted(team.getName(), team.getCity());
+                var fullName = "%s (%s)".formatted(team.getName(), team.getCity()).toLowerCase();
                 var result = new Result(gameResult.getCorrectAnswers(), new BigDecimal(points), place);
                 data.computeIfAbsent(fullName, s -> new Team(team.getName(), team.getCity())).getResults().set(gameIndex, result);
             }
@@ -101,7 +105,13 @@ public class IntGameRating {
 
         try (OutputStream os = new FileOutputStream("rating.xlsx"); Workbook wb = new Workbook(os, "IntGame Rating", "1.0")) {
             Worksheet ws = wb.newWorksheet("Лист 1");
-            int index = 0;
+
+            var header = getHeader();
+            for (int i = 0, len = header.size(); i < len; i++) {
+                ws.value(0, i, header.get(i));
+            }
+
+            int index = 1;
             for (Team team : list) {
                 ws.value(index, 0, team.getPlace());
                 ws.value(index, 1, team.getName());
@@ -142,6 +152,14 @@ public class IntGameRating {
         }
     }
 
+    String getCity(String value) {
+        var m = cityPattern.matcher(value);
+        if (m.matches()) {
+            return m.group(2);
+        }
+        return value;
+    }
+
     int getPoints(int place) {
         return place < 5 ? 82 - 2 * place : Math.max(0, 78 - place);
     }
@@ -171,6 +189,15 @@ public class IntGameRating {
         }
 
         return result;
+    }
+
+    private static List<String> getHeader() {
+        var cols = new ArrayList<>(Arrays.asList("М", "Команда", "Город"));
+        for (int game = 1; game <= GAMES_COUNT; game++) {
+            cols.addAll(Arrays.asList(game + " т М", game + " т ПО", game + " т БАЛЛЫ"));
+        }
+        cols.addAll(Arrays.asList("ПО", "БАЛЛЫ"));
+        return cols;
     }
 
     @SneakyThrows
