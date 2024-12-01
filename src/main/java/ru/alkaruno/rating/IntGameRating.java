@@ -132,6 +132,8 @@ public class IntGameRating {
                 ws.value(index, 3 + 25, team.getSum());
                 index++;
             }
+
+            ws.freezePane(0, 1);
         }
 
         // write to console
@@ -152,6 +154,7 @@ public class IntGameRating {
             return files.filter(p -> !Files.isDirectory(p))
                 .map(path -> path.getFileName().toString())
                 .filter(f -> pattern.matcher(f).matches())
+                .sorted()
                 .toList();
         }
     }
