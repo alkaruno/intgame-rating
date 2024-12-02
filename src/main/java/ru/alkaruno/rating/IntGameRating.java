@@ -1,5 +1,6 @@
 package ru.alkaruno.rating;
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
 import org.dhatim.fastexcel.Color;
@@ -7,9 +8,11 @@ import org.dhatim.fastexcel.Workbook;
 import org.dhatim.fastexcel.Worksheet;
 import org.dhatim.fastexcel.reader.ReadableWorkbook;
 import org.dhatim.fastexcel.reader.Row;
+import ru.alkaruno.rating.data.Duplicates;
 import ru.alkaruno.rating.data.Result;
 import ru.alkaruno.rating.data.Team;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
@@ -34,6 +37,7 @@ public class IntGameRating {
     public void run() {
 
         var data = new HashMap<String, Team>();
+        var duplicates = getTeamDuplicates();
 
         int gameIndex = 0;
         for (String filename : getFilenames()) {
@@ -47,12 +51,16 @@ public class IntGameRating {
                     continue;
                 }
                 var city = getCity(row.getCellText(2).trim());
-                var fullName = "%s (%s)".formatted(name, city).toLowerCase();
-                if (teamNames.contains(fullName)) {
+                var fullName = "%s (%s)".formatted(name, city);
+                fullName = duplicates.getOrDefault(fullName, fullName);
+                var lowerCase = fullName.toLowerCase();
+                if (teamNames.contains(lowerCase)) {
                     System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, row.getCellText(12));
                     continue;
                 }
-                teamNames.add(fullName);
+                teamNames.add(lowerCase);
+
+                name = fullName.split("\\(")[0].trim();
 
                 gameResults.add(Pair.of(new Team(name, city), new Result(Integer.parseInt(row.getCellText(12)), null, null)));
             }
@@ -230,6 +238,11 @@ public class IntGameRating {
                 index++;
             }
         }
+    }
+
+    @SneakyThrows
+    private Map<String, String> getTeamDuplicates() {
+        return new YAMLMapper().readValue(new File("src/main/resources/duplicates.yaml"), Duplicates.class).getTeams();
     }
 
     public static void main(String[] args) {
