@@ -15,7 +15,7 @@ public class Team {
     private BigDecimal sum;
     private String place;
     private List<Result> results = new ArrayList<>(IntGameRating.GAMES_COUNT);
-    private List<BigDecimal> bestGames;
+    private List<GamePoints> bestGames = new ArrayList<>(IntGameRating.GAMES_COUNT);
 
     public Team(String name, String city) {
         this.name = name;

@@ -10,6 +10,7 @@ import org.dhatim.fastexcel.Worksheet;
 import org.dhatim.fastexcel.reader.ReadableWorkbook;
 import org.dhatim.fastexcel.reader.Row;
 import ru.alkaruno.rating.data.Duplicates;
+import ru.alkaruno.rating.data.GamePoints;
 import ru.alkaruno.rating.data.Result;
 import ru.alkaruno.rating.data.Team;
 
@@ -22,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class IntGameRating {
 
@@ -66,11 +69,12 @@ public class IntGameRating {
                 }
                 teamNames.add(lowerCase);
 
-                var split = StringUtils.split(fullName, "()");
-                name = split[0].trim();
-                city = split.length > 1 ? split[1].trim() : "";
+                var arr = StringUtils.split(fullName, "()");
+                name = arr[0].trim();
+                city = arr.length > 1 ? arr[1].trim() : "";
 
-                gameResults.add(Pair.of(new Team(name, city), new Result(Integer.parseInt(row.getCellText(12)), null, null)));
+                var result = new Result(Integer.parseInt(row.getCellText(12)), null, null);
+                gameResults.add(Pair.of(new Team(name, city), result));
             }
 
             var places = getPlaces(gameResults.stream().map(pair -> new BigDecimal(pair.getRight().getCorrectAnswers())).toList());
@@ -99,11 +103,13 @@ public class IntGameRating {
 
         for (Map.Entry<String, Team> entry : data.entrySet()) {
             var team = entry.getValue();
-            var list = new ArrayList<>(team.getResults().stream().map(result -> result != null ? result.getPoints() : BigDecimal.ZERO).toList());
-            team.setBestGames(list);
-            team.getBestGames().sort(Collections.reverseOrder());
+            IntStream.range(0, team.getResults().size()).forEach(index -> {
+                var result = team.getResults().get(index);
+                team.getBestGames().add(new GamePoints(index, result != null ? result.getPoints() : BigDecimal.ZERO));
+            });
+            team.getBestGames().sort(Comparator.comparing(GamePoints::getPoints).reversed());
             team.setBestGames(team.getBestGames().subList(0, BEST_GAMES_COUNT));
-            team.setSum(team.getBestGames().stream().reduce(BigDecimal.ZERO, BigDecimal::add));
+            team.setSum(team.getBestGames().stream().map(GamePoints::getPoints).reduce(BigDecimal.ZERO, BigDecimal::add));
         }
 
         if (data.isEmpty()) {
@@ -133,15 +139,20 @@ public class IntGameRating {
                 if (isTopPlace(team.getPlace())) {
                     ws.range(index, 0, index, 2).style().fillColor(Color.YELLOW).set();
                 }
+                var indexes = team.getBestGames().stream().map(GamePoints::getGame).collect(Collectors.toSet());
                 ws.value(index, 0, team.getPlace());
                 ws.value(index, 1, team.getName());
                 ws.value(index, 2, team.getCity());
                 for (int game = 0; game < GAMES_COUNT; game++) {
                     var result = team.getResults().get(game);
+                    int col = 3 + game * 3;
                     if (result != null) {
-                        ws.value(index, 3 + game * 3, result.getPlace());
-                        ws.value(index, 3 + game * 3 + 1, String.valueOf(result.getCorrectAnswers()));
-                        ws.value(index, 3 + game * 3 + 2, String.valueOf(result.getPoints()));
+                        ws.value(index, col, result.getPlace());
+                        ws.value(index, col + 1, String.valueOf(result.getCorrectAnswers()));
+                        ws.value(index, col + 2, String.valueOf(result.getPoints()));
+                        if (!indexes.contains(game)) {
+                            ws.range(index, col, index, col + 2).style().fillColor(Color.GRAY1).set();
+                        }
                     }
                 }
                 ws.value(index, 3 + 24, team.getResults().stream().mapToInt(r -> r != null ? r.getCorrectAnswers() : 0).sum());
