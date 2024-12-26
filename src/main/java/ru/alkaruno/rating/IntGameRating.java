@@ -2,6 +2,7 @@ package ru.alkaruno.rating;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import lombok.SneakyThrows;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.dhatim.fastexcel.Color;
 import org.dhatim.fastexcel.Workbook;
@@ -50,9 +51,14 @@ public class IntGameRating {
                 if ("Название".equals(name) || ignoredTeams.contains(name)) {
                     continue;
                 }
+
                 var city = getCity(row.getCellText(2).trim());
                 var fullName = "%s (%s)".formatted(name, city);
+
+                System.out.print(fullName);
                 fullName = duplicates.getOrDefault(fullName, fullName);
+                System.out.println(" -> " + fullName);
+
                 var lowerCase = fullName.toLowerCase();
                 if (teamNames.contains(lowerCase)) {
                     System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, row.getCellText(12));
@@ -60,7 +66,9 @@ public class IntGameRating {
                 }
                 teamNames.add(lowerCase);
 
-                name = fullName.split("\\(")[0].trim();
+                var split = StringUtils.split(fullName, "()");
+                name = split[0].trim();
+                city = split.length > 1 ? split[1].trim() : "";
 
                 gameResults.add(Pair.of(new Team(name, city), new Result(Integer.parseInt(row.getCellText(12)), null, null)));
             }
