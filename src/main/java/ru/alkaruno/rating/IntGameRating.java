@@ -58,13 +58,15 @@ public class IntGameRating {
                 var city = getCity(row.getCellText(2).trim());
                 var fullName = "%s (%s)".formatted(name, city);
 
+                int correctAnswers = Integer.parseInt(row.getCellText(row.getCellCount() == 50 ? 12 : 14));
+
                 System.out.print(fullName);
                 fullName = duplicates.getOrDefault(fullName, fullName);
                 System.out.println(" -> " + fullName);
 
                 var lowerCase = fullName.toLowerCase();
                 if (teamNames.contains(lowerCase)) {
-                    System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, row.getCellText(12));
+                    System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, correctAnswers);
                     continue;
                 }
                 teamNames.add(lowerCase);
@@ -73,7 +75,7 @@ public class IntGameRating {
                 name = arr[0].trim();
                 city = arr.length > 1 ? arr[1].trim() : "";
 
-                var result = new Result(Integer.parseInt(row.getCellText(12)), null, null);
+                var result = new Result(correctAnswers, null, null);
                 gameResults.add(Pair.of(new Team(name, city), result));
             }
 
@@ -94,6 +96,11 @@ public class IntGameRating {
 
                 var fullName = "%s (%s)".formatted(team.getName(), team.getCity()).toLowerCase();
                 var result = new Result(gameResult.getCorrectAnswers(), new BigDecimal(points), place);
+
+                if (gameIndex == 4 && !data.containsKey(fullName)) {
+                    System.out.println("ERROR: Новая команда с 5 игры! " + team.getName() + " (" + team.getCity() + "), ответов: " + team.getSum());
+                }
+
                 data.computeIfAbsent(fullName, s -> new Team(team.getName(), team.getCity())).getResults().set(gameIndex, result);
             }
 
@@ -155,8 +162,8 @@ public class IntGameRating {
                         }
                     }
                 }
-                ws.value(index, 3 + 24, team.getResults().stream().mapToInt(r -> r != null ? r.getCorrectAnswers() : 0).sum());
-                ws.value(index, 3 + 25, team.getSum());
+                ws.value(index, 3 + 3 * GAMES_COUNT, team.getResults().stream().mapToInt(r -> r != null ? r.getCorrectAnswers() : 0).sum());
+                ws.value(index, 3 + 3 * GAMES_COUNT + 1, team.getSum());
                 index++;
             }
 
