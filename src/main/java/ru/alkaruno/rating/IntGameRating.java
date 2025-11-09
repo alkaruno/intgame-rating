@@ -14,144 +14,142 @@ import ru.alkaruno.rating.data.GamePoints;
 import ru.alkaruno.rating.data.Result;
 import ru.alkaruno.rating.data.Team;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class IntGameRating {
 
     public static final int GAMES_COUNT = 8;
-    public static final int BEST_GAMES_COUNT = 5;
+    private static final int BEST_GAMES_COUNT = 5;
+    private static final int TOP_PLACE_COUNT = 15;
 
-    private static final Pattern pattern = Pattern.compile("tournament-\\d+-table\\.xlsx");
-    static final Pattern cityPattern =
-        Pattern.compile("(г\\.? )?(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern TABLE_PATTERN = Pattern.compile("tournament-\\d+-table\\.xlsx");
+    private static final Pattern CITY_PATTERN =
+        Pattern.compile("(г[. ]+)?(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final String ONLINE = "Online";
 
-    private static final List<String> ignoredTeams = List.of("Тестовая команда1");
+    private static final List<String> IGNORED_TEAMS = List.of("Тестовая команда1");
+    private Duplicates duplicates = getDuplicates();
 
     @SneakyThrows
     public void run() {
 
-        var data = new HashMap<String, Team>();
-        var duplicates = getTeamDuplicates();
+        Map<String, Team> data = new HashMap<>();
 
-        int gameIndex = 0;
-        for (String filename : getFilenames()) {
-            var teamNames = new HashSet<String>();
-            var gameResults = new ArrayList<Pair<Team, Result>>();
-            ReadableWorkbook wb = new ReadableWorkbook(new FileInputStream(filename));
-            var sheet = wb.getFirstSheet();
-            for (Row row : sheet.read()) {
-                var name = row.getCellText(1).trim().replace("\"", "");
-                if ("Название".equals(name) || ignoredTeams.contains(name)) {
+        forEach(getFilenames(), (filename, gameIndex) -> {
+            Set<String> teamNames = new HashSet<>();
+            List<Pair<Team, Result>> gameResults = new ArrayList<>();
+            for (Row row : getSheetRows(filename)) {
+                String name = row.getCellText(1).trim().replace("\"", "");
+                if ("Название".equals(name) || IGNORED_TEAMS.contains(name)) {
                     continue;
                 }
 
-                var city = getCity(row.getCellText(2).trim());
-                var fullName = "%s (%s)".formatted(name, city);
+                if (row.getCellText(8).trim().equals(ONLINE)) {
+                    continue;
+                }
 
                 int correctAnswers = Integer.parseInt(row.getCellText(row.getCellCount() == 50 ? 12 : 14));
+                if (correctAnswers == 0) {
+                    continue;
+                }
 
-                System.out.print(fullName);
-                fullName = duplicates.getOrDefault(fullName, fullName);
-                System.out.println(" -> " + fullName);
+                String city = getCity(row.getCellText(2).trim());
+                String fullName = "%s (%s)".formatted(name, city);
+                fullName = duplicates.getTeams().getOrDefault(fullName, fullName);
 
-                var lowerCase = fullName.toLowerCase();
+                String lowerCase = fullName.toLowerCase();
                 if (teamNames.contains(lowerCase)) {
                     System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, correctAnswers);
                     continue;
                 }
                 teamNames.add(lowerCase);
 
-                var arr = StringUtils.split(fullName, "()");
+                String[] arr = StringUtils.split(fullName, "()");
                 name = arr[0].trim();
                 city = arr.length > 1 ? arr[1].trim() : "";
 
-                var result = new Result(correctAnswers, null, null);
-                gameResults.add(Pair.of(new Team(name, city), result));
+                gameResults.add(Pair.of(new Team(name, city), new Result(correctAnswers)));
             }
 
-            var places = getPlaces(gameResults.stream().map(pair -> new BigDecimal(pair.getRight().getCorrectAnswers())).toList());
+            List<String> places = getPlaces(gameResults.stream().map(pair -> new BigDecimal(pair.getRight().getCorrectAnswers())).toList());
             int index = 0;
             for (String place : places) {
-                var pair = gameResults.get(index++);
-                var team = pair.getLeft();
-                var gameResult = pair.getRight();
-                var points = 0.0;
+                Pair<Team, Result> pair = gameResults.get(index++);
+                Team team = pair.getLeft();
+                Result gameResult = pair.getRight();
+                double points;
                 if (place.contains("-")) {
-                    var arr = place.split("-");
+                    String[] arr = place.split("-");
                     points = (getPoints(Integer.parseInt(arr[0])) + getPoints(Integer.parseInt(arr[1]))) / 2.0;
                 } else {
                     points = getPoints(Integer.parseInt(place));
                 }
                 gameResult.setPlace(place).setPoints(new BigDecimal(points));
 
-                var fullName = "%s (%s)".formatted(team.getName(), team.getCity()).toLowerCase();
-                var result = new Result(gameResult.getCorrectAnswers(), new BigDecimal(points), place);
-
-                if (gameIndex == 4 && !data.containsKey(fullName)) {
-                    System.out.println("ERROR: Новая команда с 5 игры! " + team.getName() + " (" + team.getCity() + "), ответов: " + team.getSum());
-                }
+                String fullName = "%s (%s)".formatted(team.getName(), team.getCity()).toLowerCase();
+                Result result = new Result(gameResult.getCorrectAnswers(), new BigDecimal(points), place);
 
                 data.computeIfAbsent(fullName, s -> new Team(team.getName(), team.getCity())).getResults().set(gameIndex, result);
             }
 
-            gameIndex++;
-            writeGameResult(gameIndex, gameResults);
-        }
+            writeGameResult(gameIndex + 1, gameResults);
+        });
 
         for (Map.Entry<String, Team> entry : data.entrySet()) {
-            var team = entry.getValue();
+            Team team = entry.getValue();
             IntStream.range(0, team.getResults().size()).forEach(index -> {
-                var result = team.getResults().get(index);
+                Result result = team.getResults().get(index);
                 team.getBestGames().add(new GamePoints(index, result != null ? result.getPoints() : BigDecimal.ZERO));
             });
             team.getBestGames().sort(Comparator.comparing(GamePoints::getPoints).reversed());
             team.setBestGames(team.getBestGames().subList(0, BEST_GAMES_COUNT));
-            team.setSum(team.getBestGames().stream().map(GamePoints::getPoints).reduce(BigDecimal.ZERO, BigDecimal::add));
+            team.setTotalPoints(team.getBestGames().stream().map(GamePoints::getPoints).reduce(BigDecimal.ZERO, BigDecimal::add));
         }
 
-        if (data.isEmpty()) {
-            return;
-        }
+        List<Team> teams = new ArrayList<>(data.values());
+        teams.sort(Comparator.comparing(Team::getTotalPoints).reversed());
 
-        var list = new ArrayList<>(data.values());
-        list.sort((o1, o2) -> Double.compare(o2.getSum().doubleValue(), o1.getSum().doubleValue()));
-
-        var places = getPlaces(list.stream().map(Team::getSum).toList());
+        List<String> places = getPlaces(teams.stream().map(Team::getTotalPoints).toList());
         for (int i = 0; i < places.size(); i++) {
-            list.get(i).setPlace(places.get(i));
+            teams.get(i).setPlace(places.get(i));
         }
 
-        // write to Excel
+        writeCommonRating(teams);
+        writeToConsole(teams);
+    }
 
+    private void writeCommonRating(List<Team> teams) throws IOException {
         try (OutputStream os = new FileOutputStream("rating.xlsx"); Workbook wb = new Workbook(os, "IntGame Rating", "1.0")) {
-            Worksheet ws = wb.newWorksheet("Лист 1");
+            Worksheet ws = wb.newWorksheet("Рейтинг команд");
 
-            var header = getHeader();
+            List<String> header = getHeader();
             for (int i = 0, len = header.size(); i < len; i++) {
                 ws.value(0, i, header.get(i));
             }
 
             int index = 1;
-            for (Team team : list) {
+            for (Team team : teams) {
                 if (isTopPlace(team.getPlace())) {
                     ws.range(index, 0, index, 2).style().fillColor(Color.YELLOW).set();
                 }
-                var indexes = team.getBestGames().stream().map(GamePoints::getGame).collect(Collectors.toSet());
+                Set<Integer> indexes = team.getBestGames().stream().map(GamePoints::getGame).collect(Collectors.toSet());
                 ws.value(index, 0, team.getPlace());
                 ws.value(index, 1, team.getName());
                 ws.value(index, 2, team.getCity());
                 for (int game = 0; game < GAMES_COUNT; game++) {
-                    var result = team.getResults().get(game);
+                    Result result = team.getResults().get(game);
                     int col = 3 + game * 3;
                     if (result != null) {
                         ws.value(index, col, result.getPlace());
@@ -162,39 +160,72 @@ public class IntGameRating {
                         }
                     }
                 }
-                ws.value(index, 3 + 3 * GAMES_COUNT, team.getResults().stream().mapToInt(r -> r != null ? r.getCorrectAnswers() : 0).sum());
-                ws.value(index, 3 + 3 * GAMES_COUNT + 1, team.getSum());
+                int sum = team.getResults().stream().mapToInt(r -> r != null ? r.getCorrectAnswers() : 0).sum();
+                ws.value(index, 3 + 3 * GAMES_COUNT, sum);
+                ws.value(index, 3 + 3 * GAMES_COUNT + 1, team.getTotalPoints());
                 index++;
             }
 
             ws.freezePane(0, 1);
         }
+    }
 
-        // write to console
-
-        var asciiTable = new AsciiTable();
-        for (Team team : list) {
-            asciiTable.addRow(team.getPlace(), team.getName(), team.getSum());
+    @SneakyThrows
+    private void writeGameResult(int gameNumber, List<Pair<Team, Result>> gameResults) {
+        try (OutputStream os = new FileOutputStream("game-%d.xlsx".formatted(gameNumber));
+             Workbook wb = new Workbook(os, "IntGame Rating", "1.0")) {
+            Worksheet ws = wb.newWorksheet("Лист 1");
+            int index = 0;
+            for (Pair<Team, Result> gameResult : gameResults) {
+                Team team = gameResult.getLeft();
+                Result result = gameResult.getRight();
+                ws.value(index, 0, result.getPlace());
+                ws.value(index, 1, team.getName());
+                ws.value(index, 2, team.getCity());
+                ws.value(index, 3, result.getCorrectAnswers());
+                ws.value(index, 4, result.getPoints());
+                index++;
+            }
         }
+    }
+
+    private void writeToConsole(List<Team> teams) {
+        AsciiTable asciiTable = new AsciiTable();
+        teams.forEach(team -> asciiTable.addRow(team.getPlace(), team.getName(), team.getCity(), team.getTotalPoints()));
         System.out.println(asciiTable.render());
+    }
 
-        System.out.println("Done.");
-
+    public static <T> void forEach(Collection<T> collection, BiConsumer<T, Integer> consumer) {
+        AtomicInteger index = new AtomicInteger(0);
+        collection.forEach(item -> consumer.accept(item, index.getAndIncrement()));
     }
 
     @SneakyThrows
     private List<String> getFilenames() {
-        try (var files = Files.walk(Paths.get("."))) {
-            return files.filter(p -> !Files.isDirectory(p))
+        try (Stream<Path> files = Files.list(Paths.get("."))) {
+            return files
+                .filter(Files::isRegularFile)
                 .map(path -> path.getFileName().toString())
-                .filter(f -> pattern.matcher(f).matches())
+                .filter(filename -> TABLE_PATTERN.matcher(filename).matches())
                 .sorted()
                 .toList();
         }
     }
 
+    @SneakyThrows
+    private List<Row> getSheetRows(String filename) {
+        ReadableWorkbook wb = new ReadableWorkbook(new FileInputStream(filename));
+        return wb.getFirstSheet().read();
+    }
+
     String getCity(String value) {
-        var m = cityPattern.matcher(value);
+        if (value.contains("Кулебаки")) {
+            return "Кулебаки";
+        }
+        if (duplicates.getCities().containsKey(value)) {
+            return duplicates.getCities().get(value);
+        }
+        Matcher m = CITY_PATTERN.matcher(value);
         if (m.matches()) {
             return m.group(2);
         }
@@ -207,19 +238,19 @@ public class IntGameRating {
 
     List<String> getPlaces(List<BigDecimal> points) {
         assert points != null && !points.isEmpty();
-        var result = new ArrayList<String>(points.size());
+        List<String> result = new ArrayList<>(points.size());
 
-        var start = 0;
-        var blockValue = points.getFirst();
-        var size = points.size();
+        int start = 0;
+        BigDecimal blockValue = points.getFirst();
+        int size = points.size();
 
         for (int index = 1; index <= size; index++) {
-            var value = index < size ? points.get(index) : BigDecimal.valueOf(-1);
+            BigDecimal value = index < size ? points.get(index) : BigDecimal.valueOf(-1);
             if (!value.equals(blockValue)) {
                 if (index - start == 1) {
                     result.add("%d".formatted(index));
                 } else {
-                    var place = "%d-%d".formatted(start + 1, index);
+                    String place = "%d-%d".formatted(start + 1, index);
                     for (int j = start; j < index; j++) {
                         result.add(place);
                     }
@@ -234,13 +265,13 @@ public class IntGameRating {
 
     private boolean isTopPlace(String place) {
         if (place.contains("-")) {
-            return Integer.parseInt(place.split("-")[0]) <= 15;
+            return Integer.parseInt(place.split("-")[0]) <= TOP_PLACE_COUNT;
         }
-        return Integer.parseInt(place) <= 15;
+        return Integer.parseInt(place) <= TOP_PLACE_COUNT;
     }
 
     private static List<String> getHeader() {
-        var cols = new ArrayList<>(Arrays.asList("М", "Команда", "Город"));
+        List<String> cols = new ArrayList<>(Arrays.asList("М", "Команда", "Город"));
         for (int game = 1; game <= GAMES_COUNT; game++) {
             cols.addAll(Arrays.asList(game + " т М", game + " т ПО", game + " т БАЛЛЫ"));
         }
@@ -249,26 +280,8 @@ public class IntGameRating {
     }
 
     @SneakyThrows
-    private void writeGameResult(int gameNumber, List<Pair<Team, Result>> gameResults) {
-        try (OutputStream os = new FileOutputStream("game-%d.xlsx".formatted(gameNumber)); Workbook wb = new Workbook(os, "IntGame Rating", "1.0")) {
-            Worksheet ws = wb.newWorksheet("Лист 1");
-            int index = 0;
-            for (Pair<Team, Result> gameResult : gameResults) {
-                var team = gameResult.getLeft();
-                var result = gameResult.getRight();
-                ws.value(index, 0, result.getPlace());
-                ws.value(index, 1, team.getName());
-                ws.value(index, 2, team.getCity());
-                ws.value(index, 3, result.getCorrectAnswers());
-                ws.value(index, 4, result.getPoints());
-                index++;
-            }
-        }
-    }
-
-    @SneakyThrows
-    private Map<String, String> getTeamDuplicates() {
-        return new YAMLMapper().readValue(new File("src/main/resources/duplicates.yaml"), Duplicates.class).getTeams();
+    private Duplicates getDuplicates() {
+        return new YAMLMapper().readValue(new File("src/main/resources/duplicates.yml"), Duplicates.class);
     }
 
     public static void main(String[] args) {

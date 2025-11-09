@@ -9,4 +9,5 @@ import java.util.Map;
 @NoArgsConstructor
 public class Duplicates {
     Map<String, String> teams;
+    Map<String, String> cities;
 }

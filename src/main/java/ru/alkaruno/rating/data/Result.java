@@ -10,7 +10,13 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Accessors(chain = true)
 public class Result {
+
     private Integer correctAnswers;
     private BigDecimal points;
     private String place;
+
+    public Result(Integer correctAnswers) {
+        this.correctAnswers = correctAnswers;
+    }
+
 }

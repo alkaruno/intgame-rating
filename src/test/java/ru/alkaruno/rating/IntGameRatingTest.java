@@ -33,9 +33,8 @@ class IntGameRatingTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Нижний Новгород", "г Нижний Новгород", "г. Нижний Новгород"})
+    @ValueSource(strings = {"Грозный", "г Грозный", "г. Грозный", "г.Грозный"})
     public void testCityPattern(String value) {
-        assertEquals("Нижний Новгород", rating.getCity(value));
+        assertEquals("Грозный", rating.getCity(value));
     }
-
 }
