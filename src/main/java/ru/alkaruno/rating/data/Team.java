@@ -15,7 +15,7 @@ public class Team {
     private final String city;
     private String place;
     private BigDecimal totalPoints;
-    private BigDecimal totalCorrectAnswers;
+    private int totalCorrectAnswers;
     private List<Result> results = new ArrayList<>(GAMES_COUNT);
     private List<GamePoints> bestGames = new ArrayList<>(GAMES_COUNT);
 

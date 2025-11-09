@@ -11,11 +11,11 @@ import java.math.BigDecimal;
 @Accessors(chain = true)
 public class Result {
 
-    private Integer correctAnswers;
+    private int correctAnswers;
     private BigDecimal points;
     private String place;
 
-    public Result(Integer correctAnswers) {
+    public Result(int correctAnswers) {
         this.correctAnswers = correctAnswers;
     }
 

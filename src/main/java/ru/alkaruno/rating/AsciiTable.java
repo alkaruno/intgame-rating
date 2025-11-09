@@ -7,8 +7,6 @@ import java.util.stream.Collectors;
 
 public class AsciiTable {
 
-    private static final int GAP = 4;
-
     private final List<List<String>> rows = new ArrayList<>();
     private int[] widths;
 
@@ -31,7 +29,7 @@ public class AsciiTable {
     public String render() {
         String pattern = Arrays.stream(widths)
             .mapToObj("%%-%ds"::formatted)
-            .collect(Collectors.joining(" ".repeat(GAP), "", "%n"));
+            .collect(Collectors.joining(" | ", "| ", " |%n"));
 
         var sb = new StringBuilder();
         rows.forEach(row -> sb.append(pattern.formatted(row.toArray())));

@@ -36,11 +36,11 @@ public class IntGameRating {
 
     private static final Pattern TABLE_PATTERN = Pattern.compile("tournament-\\d+-table\\.xlsx");
     private static final Pattern CITY_PATTERN =
-        Pattern.compile("(г[. ]+)?(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+        Pattern.compile("(?:г[. ]+)?(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final String ONLINE = "Online";
 
-    private static final List<String> IGNORED_TEAMS = List.of("Тестовая команда1");
-    private Duplicates duplicates = getDuplicates();
+    private static final List<String> IGNORED_TEAMS = List.of();
+    private final Duplicates duplicates = getDuplicates();
 
     @SneakyThrows
     public void run() {
@@ -48,7 +48,6 @@ public class IntGameRating {
         Map<String, Team> data = new HashMap<>();
 
         forEach(getFilenames(), (filename, gameIndex) -> {
-            Set<String> teamNames = new HashSet<>();
             List<Pair<Team, Result>> gameResults = new ArrayList<>();
             for (Row row : getSheetRows(filename)) {
                 String name = row.getCellText(1).trim().replace("\"", "");
@@ -68,13 +67,6 @@ public class IntGameRating {
                 String city = getCity(row.getCellText(2).trim());
                 String fullName = "%s (%s)".formatted(name, city);
                 fullName = duplicates.getTeams().getOrDefault(fullName, fullName);
-
-                String lowerCase = fullName.toLowerCase();
-                if (teamNames.contains(lowerCase)) {
-                    System.out.printf("WARN: file: %s, duplicate team: %s, points: %s%n", filename, name, correctAnswers);
-                    continue;
-                }
-                teamNames.add(lowerCase);
 
                 String[] arr = StringUtils.split(fullName, "()");
                 name = arr[0].trim();
@@ -101,7 +93,9 @@ public class IntGameRating {
                 String fullName = "%s (%s)".formatted(team.getName(), team.getCity()).toLowerCase();
                 Result result = new Result(gameResult.getCorrectAnswers(), new BigDecimal(points), place);
 
-                data.computeIfAbsent(fullName, s -> new Team(team.getName(), team.getCity())).getResults().set(gameIndex, result);
+                Team t = data.computeIfAbsent(fullName, s -> new Team(team.getName(), team.getCity()));
+                t.getResults().set(gameIndex, result);
+                t.setTotalCorrectAnswers(t.getTotalCorrectAnswers() + result.getCorrectAnswers());
             }
 
             writeGameResult(gameIndex + 1, gameResults);
@@ -119,12 +113,13 @@ public class IntGameRating {
         }
 
         List<Team> teams = new ArrayList<>(data.values());
-        teams.sort(Comparator.comparing(Team::getTotalPoints).reversed());
+        teams.sort(Comparator
+            .comparing(Team::getTotalPoints).reversed()
+            .thenComparing(Comparator.comparing(Team::getTotalCorrectAnswers).reversed())
+        );
 
         List<String> places = getPlaces(teams.stream().map(Team::getTotalPoints).toList());
-        for (int i = 0; i < places.size(); i++) {
-            teams.get(i).setPlace(places.get(i));
-        }
+        forEach(places, (place, i) -> teams.get(i).setPlace(place));
 
         writeCommonRating(teams);
         writeToConsole(teams);
@@ -150,8 +145,8 @@ public class IntGameRating {
                 ws.value(index, 2, team.getCity());
                 for (int game = 0; game < GAMES_COUNT; game++) {
                     Result result = team.getResults().get(game);
-                    int col = 3 + game * 3;
                     if (result != null) {
+                        int col = 3 + game * 3;
                         ws.value(index, col, result.getPlace());
                         ws.value(index, col + 1, String.valueOf(result.getCorrectAnswers()));
                         ws.value(index, col + 2, String.valueOf(result.getPoints()));
@@ -160,8 +155,7 @@ public class IntGameRating {
                         }
                     }
                 }
-                int sum = team.getResults().stream().mapToInt(r -> r != null ? r.getCorrectAnswers() : 0).sum();
-                ws.value(index, 3 + 3 * GAMES_COUNT, sum);
+                ws.value(index, 3 + 3 * GAMES_COUNT, team.getTotalCorrectAnswers());
                 ws.value(index, 3 + 3 * GAMES_COUNT + 1, team.getTotalPoints());
                 index++;
             }
@@ -191,7 +185,13 @@ public class IntGameRating {
 
     private void writeToConsole(List<Team> teams) {
         AsciiTable asciiTable = new AsciiTable();
-        teams.forEach(team -> asciiTable.addRow(team.getPlace(), team.getName(), team.getCity(), team.getTotalPoints()));
+        teams.forEach(team -> asciiTable.addRow(
+            team.getPlace(),
+            team.getName(),
+            team.getCity(),
+            team.getTotalPoints(),
+            team.getTotalCorrectAnswers()
+        ));
         System.out.println(asciiTable.render());
     }
 
@@ -227,7 +227,7 @@ public class IntGameRating {
         }
         Matcher m = CITY_PATTERN.matcher(value);
         if (m.matches()) {
-            return m.group(2);
+            return m.group(1);
         }
         return value;
     }
