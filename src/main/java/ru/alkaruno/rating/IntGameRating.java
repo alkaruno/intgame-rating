@@ -9,7 +9,7 @@ import org.dhatim.fastexcel.Workbook;
 import org.dhatim.fastexcel.Worksheet;
 import org.dhatim.fastexcel.reader.ReadableWorkbook;
 import org.dhatim.fastexcel.reader.Row;
-import ru.alkaruno.rating.data.Duplicates;
+import ru.alkaruno.rating.data.Config;
 import ru.alkaruno.rating.data.GamePoints;
 import ru.alkaruno.rating.data.Result;
 import ru.alkaruno.rating.data.Team;
@@ -40,7 +40,7 @@ public class IntGameRating {
     private static final String ONLINE = "Online";
 
     private static final List<String> IGNORED_TEAMS = List.of();
-    private final Duplicates duplicates = getDuplicates();
+    private final Config config = getConfig();
 
     @SneakyThrows
     public void run() {
@@ -66,7 +66,12 @@ public class IntGameRating {
 
                 String city = getCity(row.getCellText(2).trim());
                 String fullName = "%s (%s)".formatted(name, city);
-                fullName = duplicates.getTeams().getOrDefault(fullName, fullName);
+
+                if (config.getIgnore().contains(fullName)) {
+                    continue;
+                }
+
+                fullName = config.getDuplicates().getOrDefault(fullName, fullName);
 
                 String[] arr = StringUtils.split(fullName, "()");
                 name = arr[0].trim();
@@ -222,8 +227,8 @@ public class IntGameRating {
         if (value.contains("Кулебаки")) {
             return "Кулебаки";
         }
-        if (duplicates.getCities().containsKey(value)) {
-            return duplicates.getCities().get(value);
+        if (config.getCities().containsKey(value)) {
+            return config.getCities().get(value);
         }
         Matcher m = CITY_PATTERN.matcher(value);
         if (m.matches()) {
@@ -280,8 +285,8 @@ public class IntGameRating {
     }
 
     @SneakyThrows
-    private Duplicates getDuplicates() {
-        return new YAMLMapper().readValue(new File("src/main/resources/duplicates.yml"), Duplicates.class);
+    private Config getConfig() {
+        return new YAMLMapper().readValue(new File("src/main/resources/config.yml"), Config.class);
     }
 
     public static void main(String[] args) {
