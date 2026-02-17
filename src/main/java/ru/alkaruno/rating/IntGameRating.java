@@ -49,13 +49,25 @@ public class IntGameRating {
 
         forEach(getFilenames(), (filename, gameIndex) -> {
             List<Pair<Team, Result>> gameResults = new ArrayList<>();
+            int placeColumnNumber = 0;
             for (Row row : getSheetRows(filename)) {
                 String name = row.getCellText(1).trim().replace("\"", "");
-                if ("Название".equals(name) || IGNORED_TEAMS.contains(name)) {
+                if ("Название".equals(name)) {
+                    System.out.println("Количество колонок: " + row.getCellCount());
+                    for (int i = 0; i < row.getCellCount(); i++) {
+                        if ("Площадка".equals(row.getCellText(i).trim())) {
+                            placeColumnNumber = i;
+                            System.out.println("Номер колонки с площадкой: " + placeColumnNumber);
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                if (IGNORED_TEAMS.contains(name)) {
                     continue;
                 }
 
-                if (row.getCellText(8).trim().equals(ONLINE)) {
+                if (row.getCellText(placeColumnNumber).trim().equals(ONLINE)) {
                     continue;
                 }
 
