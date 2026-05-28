@@ -39,7 +39,6 @@ public class IntGameRating {
         Pattern.compile("(?:г[. ]+)?(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final String ONLINE = "Online";
 
-    private static final List<String> IGNORED_TEAMS = List.of();
     private final Config config = getConfig();
 
     @SneakyThrows
@@ -53,17 +52,12 @@ public class IntGameRating {
             for (Row row : getSheetRows(filename)) {
                 String name = row.getCellText(1).trim().replace("\"", "");
                 if ("Название".equals(name)) {
-                    System.out.println("Количество колонок: " + row.getCellCount());
                     for (int i = 0; i < row.getCellCount(); i++) {
                         if ("Площадка".equals(row.getCellText(i).trim())) {
                             placeColumnNumber = i;
-                            System.out.println("Номер колонки с площадкой: " + placeColumnNumber);
                             break;
                         }
                     }
-                    continue;
-                }
-                if (IGNORED_TEAMS.contains(name)) {
                     continue;
                 }
 
@@ -107,10 +101,15 @@ public class IntGameRating {
                 }
                 gameResult.setPlace(place).setPoints(new BigDecimal(points));
 
-                String fullName = "%s (%s)".formatted(team.getName(), team.getCity()).toLowerCase();
+                String fullName = "%s (%s)".formatted(team.getName(), team.getCity());
+                String key = fullName.toLowerCase();
                 Result result = new Result(gameResult.getCorrectAnswers(), new BigDecimal(points), place);
 
-                Team t = data.computeIfAbsent(fullName, s -> new Team(team.getName(), team.getCity()));
+                if (gameIndex == 7 && !data.containsKey(key)) {
+                    System.out.println(fullName);
+                }
+
+                Team t = data.computeIfAbsent(key, s -> new Team(team.getName(), team.getCity()));
                 t.getResults().set(gameIndex, result);
                 t.setTotalCorrectAnswers(t.getTotalCorrectAnswers() + result.getCorrectAnswers());
             }
